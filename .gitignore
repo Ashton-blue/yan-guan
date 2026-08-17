@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .env
+.env.local
 *.egg
 .venv/
 venv/
@@ -28,4 +29,12 @@ Thumbs.db
 
 # Logs
 *.log
-.env.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# 临时文件
+*.tmp
+*.bak
