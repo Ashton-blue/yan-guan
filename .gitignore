@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.log
+logs/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+!.env.production
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# 本地数据库（Zeabur 使用托管 postgres，仓库不落库文件）
+*.sqlite3
+*.db
