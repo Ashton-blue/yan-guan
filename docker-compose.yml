@@ -37,7 +37,10 @@ services:
       - ./logs:/app/logs
 
   frontend:
-    build: ./frontend
+    # 构建上下文 = 仓库根，与 Zeabur 侧配置保持一致（gitURL + rootDirectory="" + dockerfile="frontend/Dockerfile"）
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
       - "80:80"
     depends_on:

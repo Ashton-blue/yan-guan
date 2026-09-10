@@ -7,13 +7,13 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# 构建上下文 = 仓库的 backend/ 目录（Zeabur rootDirectory=backend，docker-compose build: ./backend）
+# 构建上下文 = 仓库根（Zeabur: rootDirectory="" + dockerfile="backend/Dockerfile"）
 # 复制依赖文件
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
-COPY . .
+COPY backend/ .
 
 # 创建日志目录
 RUN mkdir -p /app/logs
