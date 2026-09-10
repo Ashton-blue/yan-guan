@@ -2,11 +2,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# 构建上下文 = 仓库的 frontend/ 目录（Zeabur rootDirectory=frontend，docker-compose build: ./frontend）
 # 复制前端文件
-COPY frontend/package*.json ./
+COPY package*.json ./
 RUN npm ci
 
-COPY frontend/ .
+COPY . .
 RUN npm run build
 
 # 生产环境
