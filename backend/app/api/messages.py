@@ -114,7 +114,7 @@ async def mark_all_read(
     return {"message": "全部标记为已读", "total_unread": 0}
 
 
-@router.post("/messages", response_model=MessageOut, tags=[TAG])
+@router.post("/messages", response_model=MessageOut, status_code=201, tags=[TAG])
 async def send_direct_message(
     team_id: int,
     data: MessageCreate,

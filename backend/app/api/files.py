@@ -27,7 +27,7 @@ TAG = "文件管理"
 
 
 # ============ 文件夹 ============
-@router.post("/folders", response_model=FolderOut, tags=[TAG])
+@router.post("/folders", response_model=FolderOut, status_code=201, tags=[TAG])
 async def create_folder(
     team_id: int,
     data: FolderCreate,
@@ -102,7 +102,7 @@ async def delete_folder(
     if child_count > 0 or file_count > 0:
         raise HTTPException(400, "文件夹非空，无法删除")
 
-    db.delete(folder)
+    await db.delete(folder)
     await db.commit()
     await log_audit_action(
         db, team_id=team_id, operator_id=member.user_id,
@@ -116,7 +116,7 @@ async def delete_folder(
 
 
 # ============ 文件 ============
-@router.post("/files/upload", tags=[TAG])
+@router.post("/files/upload", status_code=201, tags=[TAG])
 async def upload_file(
     team_id: int,
     file: UploadFile,

@@ -76,7 +76,7 @@ async def list_members(
 ):
     """获取团队成员列表"""
     result = await db.execute(
-        select(TeamMember, User).join(User).where(
+        select(TeamMember, User).join(User, TeamMember.user_id == User.id).where(
             TeamMember.team_id == team_id,
             TeamMember.is_active == True
         ).order_by(TeamMember.created_at)

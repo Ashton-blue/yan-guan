@@ -87,12 +87,7 @@ class MessageCreate(BaseModel):
     content: Optional[str] = Field(None, max_length=2000)
     msg_type: str = Field("direct")
 
-class MessageListParams(BaseModel):
-    tab: str = Field("all", pattern="^(all|notification|mention)$")
-    page: int = Field(1, ge=1)
-    page_size: int = Field(20, ge=1, le=100)
-
 
 class MessageReadResult(BaseModel):
-    message: int
+    message: str
     total_unread: int
