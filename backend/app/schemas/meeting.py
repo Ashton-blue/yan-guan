@@ -1,6 +1,14 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import datetime, date, timezone
+
+
+def _strip_tz(dt: Optional[datetime]) -> Optional[datetime]:
+    """PostgreSQL TIMESTAMP WITHOUT TIME ZONE 列不接受带时区信息的 datetime。
+    若客户端传入带 tzinfo 的值（如 'Z' 结尾的 ISO 字符串），统一剥离为 naive。"""
+    if dt is not None and dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
 
 # ---------- 会议 ----------
 class MeetingCreate(BaseModel):
@@ -13,6 +21,11 @@ class MeetingCreate(BaseModel):
     description: Optional[str] = None
     status: str = "upcoming"
 
+    @field_validator("start_at", "end_at", mode="after")
+    @classmethod
+    def _strip_tzinfo(cls, v: Optional[datetime]) -> Optional[datetime]:
+        return _strip_tz(v)
+
 class MeetingUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     meeting_type: Optional[str] = Field(None, pattern="^(journal|progress|defense)$")
@@ -22,6 +35,11 @@ class MeetingUpdate(BaseModel):
     presenter_id: Optional[int] = None
     description: Optional[str] = None
     status: Optional[str] = None
+
+    @field_validator("start_at", "end_at", mode="after")
+    @classmethod
+    def _strip_tzinfo(cls, v: Optional[datetime]) -> Optional[datetime]:
+        return _strip_tz(v)
 
 class MeetingOut(BaseModel):
     id: int
