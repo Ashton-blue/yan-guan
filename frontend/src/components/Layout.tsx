@@ -1,71 +1,97 @@
-import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
+import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  const { user, teams, currentTeam, setCurrentTeam, logout } = useAuth();
-  const navigate = useNavigate();
+const NAV = [
+  { to: '/dashboard', label: '仪表盘', icon: '📊' },
+  { to: '/meetings', label: '组会管理', icon: '📅' },
+  { to: '/members', label: '成员管理', icon: '👥' },
+  { to: '/account', label: '账户管理', icon: '👤' },
+  { to: '/policy', label: '政策助手', icon: '📜' },
+]
+
+const Layout: React.FC = () => {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+    logout()
+    navigate('/login')
+  }
+  const isActive = (to: string) => location.pathname.startsWith(to)
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* 顶部导航 */}
-      <header className="bg-brand-primary text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/" className="text-xl font-bold tracking-wide">智汇·研管</Link>
+    <div className="min-h-screen bg-brand-bg-warm md:flex">
+      {/* 移动端顶栏 */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white text-brand-ink h-12 flex items-center justify-between px-3 z-40 shadow-sm border-b border-brand-line">
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-xl px-1" aria-label="菜单">☰</button>
+        <span className="font-bold">研管·工作台</span>
+        <span className="w-7"></span>
+      </div>
 
-            {/* 团队切换器 */}
-            {teams.length > 1 && currentTeam && (
-              <select
-                className="bg-brand-primary-light text-white text-sm rounded px-2 py-1 border border-white/30"
-                value={`${currentTeam.id}`}
-                onChange={(e) => {
-                  const t = teams.find(t => t.id === Number(e.target.value));
-                  if (t) setCurrentTeam(t);
-                }}
-              >
-                {teams.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} · {t.role === 'owner' ? '教师' : t.role === 'supervisor' ? '主管' : t.role === 'co_manager' ? '协管员' : '成员'}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4 text-sm">
-            {currentTeam && (
-              <span className="text-white/80">{currentTeam.name}</span>
-            )}
-            {user && (
-              <>
-                <span className="text-white/90">{user.display_name}</span>
-                <button onClick={handleLogout} className="text-white/70 hover:text-white">退出</button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* 二级导航 */}
-      {currentTeam && user && (
-        <nav className="bg-white border-b shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 flex gap-6 h-10 items-center text-sm">
-            <Link to="/" className="text-gray-600 hover:text-brand-primary">仪表盘</Link>
-            <Link to="/members" className="text-gray-600 hover:text-brand-primary">成员管理</Link>
-          </div>
-        </nav>
+      {/* 侧边栏遮罩（移动端） */}
+      {sidebarOpen && (
+        <div className="md:hidden fixed inset-0 bg-black/30 z-40" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* 主内容 */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-6 w-full">
-        {children}
+      {/* 侧边栏（净白） */}
+      <aside className={`
+        md:sticky md:top-0 fixed inset-y-0 left-0 w-64 bg-white border-r border-brand-line shadow-sm
+        transform transition-transform duration-200 z-50 flex flex-col
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div className="h-14 flex items-center px-4 border-b border-brand-line flex-shrink-0">
+          <span className="text-lg font-bold tracking-wide text-brand-ink">研管·工作台</span>
+        </div>
+
+        <nav className="flex-1 px-3 py-3 space-y-1 text-sm overflow-y-auto">
+          {NAV.map((item) => (
+            <a
+              key={item.to}
+              href={item.to}
+              onClick={() => setSidebarOpen(false)}
+              className={`${isActive(item.to) ? 'side-active' : 'side-item'} flex items-center gap-3 px-3 py-2.5 rounded-lg transition`}
+            >
+              <span>{item.icon}</span>
+              <span>{item.label}</span>
+            </a>
+          ))}
+        </nav>
+
+        <div className="px-3 py-3 border-t border-brand-line flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium flex-shrink-0 overflow-hidden"
+              style={{ backgroundColor: user?.avatar_url ? 'transparent' : '#DBEAFE', color: '#1D4ED8' }}
+            >
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} className="w-9 h-9 rounded-full object-cover" alt="" />
+              ) : (
+                (user?.name?.[0] || 'U')
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-brand-ink truncate">{user?.name || '用户'}</p>
+              <p className="text-xs text-brand-muted">研究室成员</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="mt-2 w-full text-left text-xs text-brand-muted hover:text-brand-danger px-2 py-1.5 rounded transition"
+          >
+            退出登录
+          </button>
+        </div>
+      </aside>
+
+      {/* 主内容区 */}
+      <main className="flex-1 min-w-0 px-4 md:px-6 pb-6 pt-16 md:pt-6">
+        <Outlet />
       </main>
     </div>
-  );
+  )
 }
+
+export default Layout

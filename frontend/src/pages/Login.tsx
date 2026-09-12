@@ -1,75 +1,89 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { login } from '../api/auth';
+import React, { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 
-export default function Login() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const { setAuth } = useAuth();
-  const navigate = useNavigate();
+const Login: React.FC = () => {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const { login } = useAuth()
+  const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
+    e.preventDefault()
+    setError('')
+    setIsLoading(true)
+
     try {
-      const data = await login(username, password);
-      setAuth(data);
-      navigate('/');
+      await login(email, password)
+      navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || '登录失败');
+      setError(err.response?.data?.detail || '登录失败，请检查邮箱和密码')
     } finally {
-      setSubmitting(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-brand-bg-warm">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-brand-primary text-center mb-6">智汇·研管</h1>
-
-        {error && (
-          <div className="bg-red-50 text-red-600 text-sm p-3 rounded mb-4">{error}</div>
-        )}
+      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-brand-ink">智汇·研管</h1>
+          <p className="text-brand-muted mt-2">科研政策智能助手</p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-600 mb-1">账号</label>
+            <label className="block text-sm font-medium text-brand-ink mb-1">邮箱</label>
             <input
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-brand-primary"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2.5 border border-brand-line rounded-lg focus:outline-none focus:border-brand-primary bg-brand-bg-warm/50"
+              placeholder="请输入邮箱"
               required
-              autoFocus
             />
           </div>
+
           <div>
-            <label className="block text-sm text-gray-600 mb-1">密码</label>
+            <label className="block text-sm font-medium text-brand-ink mb-1">密码</label>
             <input
               type="password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-brand-primary"
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2.5 border border-brand-line rounded-lg focus:outline-none focus:border-brand-primary bg-brand-bg-warm/50"
+              placeholder="请输入密码"
               required
             />
           </div>
+
+          {error && (
+            <div className="text-red-500 text-sm">{error}</div>
+          )}
+
           <button
             type="submit"
-            disabled={submitting}
-            className="w-full bg-brand-primary text-white py-2 rounded hover:bg-brand-primary-light disabled:opacity-50"
+            disabled={isLoading}
+            className="w-full bg-brand-primary text-white py-2.5 rounded-lg hover:bg-brand-primary-light transition disabled:opacity-50"
           >
-            {submitting ? '登录中...' : '登录'}
+            {isLoading ? '登录中...' : '登录'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-4">
-          没有账号？<Link to="/register" className="text-brand-primary hover:underline">注册教师账号</Link>
-        </p>
+        <div className="mt-6 text-center">
+          <Link to="/register" className="text-sm text-brand-primary hover:underline">
+            还没有账号？立即注册
+          </Link>
+        </div>
+
+        <div className="mt-4 p-3 bg-brand-bg-warm rounded-lg">
+          <p className="text-xs text-brand-muted">测试账号：</p>
+          <p className="text-xs text-brand-muted mt-1">教师：research_test_001@test.com / YanGuan2026!</p>
+        </div>
       </div>
     </div>
-  );
+  )
 }
+
+export default Login

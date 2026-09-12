@@ -1,1 +1,1 @@
-# schemas
+from app.schemas.user import *

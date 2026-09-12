@@ -1,36 +1,32 @@
-import client from './client';
+import api from './client'
 
-export interface MemberResponse {
-  id: number;
-  user_id: number;
-  username: string;
-  display_name: string;
-  email?: string;
-  role: string;
-  joined_at: string;
+export interface Member {
+  id: number
+  user_id: number
+  email: string
+  name: string
+  role: string
+  created_at: string
 }
 
-export interface MemberAddResponse {
-  member: MemberResponse;
-  initial_password: string;
-}
+export const memberApi = {
+  // 获取团队成员列表
+  listMembers: (teamId: number) =>
+    api.get<any, { data: Member[] }>(`/teams/${teamId}/members`),
 
-export async function listMembers(teamId: number): Promise<MemberResponse[]> {
-  const res = await client.get(`/teams/${teamId}/members`);
-  return res.data;
-}
+  // 添加成员
+  addMember: (teamId: number, data: { email: string; role: string }) =>
+    api.post<any, { data: Member }>(`/teams/${teamId}/members`, data),
 
-export async function addMember(teamId: number, data: { username: string; display_name: string; email?: string; role: string }): Promise<MemberAddResponse> {
-  const res = await client.post(`/teams/${teamId}/members`, data);
-  return res.data;
-}
+  // 更新成员
+  updateMember: (teamId: number, memberId: number, data: { role?: string; is_active?: boolean }) =>
+    api.put(`/teams/${teamId}/members/${memberId}`, data),
 
-export async function removeMember(teamId: number, userId: number) {
-  const res = await client.delete(`/teams/${teamId}/members/${userId}`);
-  return res.data;
-}
+  // 移除成员
+  removeMember: (teamId: number, memberId: number) =>
+    api.delete(`/teams/${teamId}/members/${memberId}`),
 
-export async function resetPassword(teamId: number, userId: number): Promise<{ new_password: string }> {
-  const res = await client.post(`/teams/${teamId}/members/${userId}/reset-password`);
-  return res.data;
+  // 获取当前用户角色
+  getMyRole: (teamId: number) =>
+    api.get<any, { data: { role: string } }>(`/teams/${teamId}/members/me`),
 }

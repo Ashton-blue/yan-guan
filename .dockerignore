@@ -1,0 +1,19 @@
+# 构建上下文 = 仓库根（Zeabur 前后端两服务共用）
+.git
+.gitignore
+**/node_modules
+**/dist
+**/.vite
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.venv
+**/venv
+**/.env
+**/.env.local
+**/.env.development
+**/*.log
+**/logs
+**/.idea
+**/.vscode
+**/.DS_Store

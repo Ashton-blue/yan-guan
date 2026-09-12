@@ -1,35 +1,30 @@
-import client from './client';
+import api from './client'
 
-export interface TeamResponse {
-  id: number;
-  name: string;
-  school?: string;
-  research_area?: string;
-  description?: string;
-  meeting_time?: string;
-  is_active: boolean;
-  owner_id: number;
-  member_count: number;
-  created_at: string;
+export interface Team {
+  id: number
+  name: string
+  description: string
+  role: string
+  created_at: string
 }
 
-export interface TeamListItem {
-  id: number;
-  name: string;
-  role: string;
-}
+export const teamApi = {
+  // 获取团队列表
+  listTeams: () => api.get<any, { data: Team[] }>('/teams'),
 
-export async function createTeam(data: { name: string; school?: string; research_area?: string; description?: string }): Promise<TeamResponse> {
-  const res = await client.post('/teams', data);
-  return res.data;
-}
+  // 创建团队
+  createTeam: (data: { name: string; description?: string }) =>
+    api.post<any, { data: Team }>('/teams', data),
 
-export async function listMyTeams(): Promise<TeamListItem[]> {
-  const res = await client.get('/teams');
-  return res.data;
-}
+  // 获取团队详情
+  getTeam: (teamId: number) =>
+    api.get<any, { data: Team }>(`/teams/${teamId}`),
 
-export async function getTeam(teamId: number): Promise<TeamResponse> {
-  const res = await client.get(`/teams/${teamId}`);
-  return res.data;
+  // 更新团队
+  updateTeam: (teamId: number, data: { name?: string; description?: string }) =>
+    api.put(`/teams/${teamId}`, data),
+
+  // 删除团队
+  deleteTeam: (teamId: number) =>
+    api.delete(`/teams/${teamId}`),
 }

@@ -1,37 +1,44 @@
-import client from './client';
+import api from './client'
 
-export interface UserInfo {
-  id: number;
-  username: string;
-  display_name: string;
-  email?: string;
-  phone?: string;
-  avatar_url?: string;
-  is_system_admin: boolean;
-  must_change_password: boolean;
+export interface User {
+  id: number
+  email: string
+  name: string
+  avatar_url?: string | null
+  research_area?: string | null
+  bio?: string | null
+  status?: string
+  must_change_password: boolean
+  created_at: string
 }
 
-export interface AuthMeResponse {
-  user: UserInfo;
-  teams: { id: number; name: string; role: string }[];
+export interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number
 }
 
-export async function login(username: string, password: string) {
-  const res = await client.post('/auth/login', { username, password });
-  return res.data;
-}
+export const authApi = {
+  // 注册
+  register: (data: { email: string; password: string; name: string }) =>
+    api.post<any, { data: { message: string; user: User } }>('/auth/register', data),
 
-export async function register(data: { username: string; password: string; display_name: string; email?: string }) {
-  const res = await client.post('/auth/register', data);
-  return res.data;
-}
+  // 登录
+  login: (data: { email: string; password: string }) =>
+    api.post<any, { data: TokenResponse }>('/auth/login', data),
 
-export async function getMe(): Promise<AuthMeResponse> {
-  const res = await client.get('/auth/me');
-  return res.data;
-}
+  // 获取当前用户信息
+  getMe: () =>
+    api.get<any, { data: User }>('/auth/me'),
 
-export async function changePassword(old_password: string, new_password: string) {
-  const res = await client.post('/auth/change-password', { old_password, new_password });
-  return res.data;
+  // 修改密码
+  changePassword: (data: { old_password: string; new_password: string }) =>
+    api.post('/auth/change-password', data),
+
+  // 刷新token
+  refreshToken: (refresh_token: string) =>
+    api.post<any, { data: { access_token: string } }>('/auth/refresh', null, {
+      params: { refresh_token }
+    }),
 }

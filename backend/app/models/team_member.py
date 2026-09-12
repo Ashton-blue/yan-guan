@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Index
+from datetime import datetime
 from app.database import Base
 
 
@@ -7,10 +8,14 @@ class TeamMember(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role = Column(String(20), nullable=False, default="student", comment="owner | supervisor | co_manager | student")
-    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(String(50), nullable=False)  # owner/supervisor/co_manager/student/collaborator/temp_student
+    invited_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
 
     __table_args__ = (
-        UniqueConstraint("team_id", "user_id", name="uq_team_user"),
+        Index('idx_team_members_team', 'team_id'),
+        Index('idx_team_members_user', 'user_id'),
+        Index('idx_team_members_role', 'team_id', 'role'),
     )

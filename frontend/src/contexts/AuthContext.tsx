@@ -1,73 +1,67 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getMe, UserInfo, AuthMeResponse } from '../api/auth';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { authApi, User } from '../api/auth'
 
 interface AuthContextType {
-  user: UserInfo | null;
-  teams: { id: number; name: string; role: string }[];
-  currentTeam: { id: number; name: string; role: string } | null;
-  loading: boolean;
-  setAuth: (data: { access_token: string; refresh_token: string }) => void;
-  logout: () => void;
-  refreshUser: () => Promise<void>;
-  setCurrentTeam: (team: { id: number; name: string; role: string } | null) => void;
+  user: User | null
+  token: string | null
+  login: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, name: string) => Promise<{ message: string; user: User }>
+  logout: () => void
+  isLoading: boolean
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [teams, setTeams] = useState<{ id: number; name: string; role: string }[]>([]);
-  const [currentTeam, setCurrentTeam] = useState<{ id: number; name: string; role: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'))
+  const [isLoading, setIsLoading] = useState(true)
 
-  const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const data: AuthMeResponse = await getMe();
-      setUser(data.user);
-      setTeams(data.teams);
-      if (data.teams.length > 0 && !currentTeam) {
-        setCurrentTeam(data.teams[0]);
-      }
-    } catch {
-      localStorage.clear();
-      setUser(null);
-      setTeams([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // 初始化时检查token
   useEffect(() => {
-    refreshUser();
-  }, [refreshUser]);
+    if (token) {
+      authApi.getMe()
+        .then(res => setUser(res.data))
+        .catch(() => {
+          localStorage.removeItem('access_token')
+          setToken(null)
+        })
+        .finally(() => setIsLoading(false))
+    } else {
+      setIsLoading(false)
+    }
+  }, [])
 
-  const setAuth = (data: { access_token: string; refresh_token: string }) => {
-    localStorage.setItem('access_token', data.access_token);
-    localStorage.setItem('refresh_token', data.refresh_token);
-    refreshUser();
-  };
+  const login = async (email: string, password: string) => {
+    const res = await authApi.login({ email, password })
+    localStorage.setItem('access_token', res.data.access_token)
+    localStorage.setItem('refresh_token', res.data.refresh_token)
+    setToken(res.data.access_token)
+  }
+
+  const register = async (email: string, password: string, name: string) => {
+    const res = await authApi.register({ email, password, name })
+    return res.data
+  }
 
   const logout = () => {
-    localStorage.clear();
-    setUser(null);
-    setTeams([]);
-    setCurrentTeam(null);
-  };
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    setToken(null)
+    setUser(null)
+  }
 
   return (
-    <AuthContext.Provider value={{ user, teams, currentTeam, loading, setAuth, logout, refreshUser, setCurrentTeam }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
-  );
+  )
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
 }

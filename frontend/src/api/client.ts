@@ -1,44 +1,40 @@
-import axios from 'axios';
+import axios from 'axios'
 
-const client = axios.create({
-  baseURL: '/api/v1',
-  headers: { 'Content-Type': 'application/json' },
-});
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
-// 请求拦截器自动加 token
-client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
 
-// 响应拦截器处理 401
-client.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      // Token过期尝试刷新
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken && error.config?.url !== '/auth/refresh') {
-        try {
-          const res = await client.post('/auth/refresh', { refresh_token_str: refreshToken });
-          localStorage.setItem('access_token', res.data.access_token);
-          localStorage.setItem('refresh_token', res.data.refresh_token);
-          error.config.headers.Authorization = `Bearer ${res.data.access_token}`;
-          return client(error.config);
-        } catch {
-          localStorage.clear();
-          window.location.href = '/login';
-        }
-      } else {
-        localStorage.clear();
-        window.location.href = '/login';
-      }
+// 请求拦截器 - 添加认证token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
     }
-    return Promise.reject(error);
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
   }
-);
+)
 
-export default client;
+// 响应拦截器 - 处理认证错误
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+export default api

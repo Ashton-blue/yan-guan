@@ -1,70 +1,39 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import Optional
+from sqlalchemy import insert
+from datetime import datetime
 from app.models.audit_log import AuditLog
-from app.models.user import User
 
-
-async def create_audit_log(
+async def log_audit_action(
     db: AsyncSession,
-    *,
-    team_id: Optional[int] = None,
-    operator: User,
-    operator_role: Optional[str] = None,
+    team_id: int,
+    operator_id: int,
+    operator_name: str,
+    operator_role: str,
     action_type: str,
     target_type: str,
-    target_id: Optional[int] = None,
-    target_summary: Optional[str] = None,
-    detail: Optional[dict] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
-    result: str = "SUCCESS",
-) -> AuditLog:
-    """写审计日志（仅追加，不提供更新/删除接口）"""
+    target_id: int,
+    target_summary: str = "",
+    detail: dict = None,
+    ip_address: str = None,
+    user_agent: str = None,
+    result: str = "SUCCESS"
+):
+    """记录审计日志"""
     log = AuditLog(
         team_id=team_id,
-        operator_id=operator.id,
-        operator_name=operator.display_name,
+        operator_id=operator_id,
+        operator_name=operator_name,
         operator_role=operator_role,
         action_type=action_type,
         target_type=target_type,
         target_id=target_id,
-        target_summary=target_summary,
+        target_summary=target_summary[:500] if target_summary else None,
         detail=detail,
         ip_address=ip_address,
         user_agent=user_agent,
         result=result,
+        created_at=datetime.utcnow()
     )
     db.add(log)
-    await db.flush()
+    await db.commit()
     return log
-
-
-async def query_audit_logs(
-    db: AsyncSession,
-    *,
-    team_id: Optional[int] = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> tuple[list[AuditLog], int]:
-    """查询审计日志（仅供系统管理员）"""
-    conditions = []
-    if team_id:
-        conditions.append(AuditLog.team_id == team_id)
-
-    # 查询总数
-    count_q = select(func.count(AuditLog.id))
-    if conditions:
-        count_q = count_q.where(*conditions)
-    total = await db.execute(count_q)
-    total_count = total.scalar()
-
-    # 查询列表
-    q = select(AuditLog).order_by(AuditLog.created_at.desc())
-    if conditions:
-        q = q.where(*conditions)
-    q = q.offset(offset).limit(limit)
-    result = await db.execute(q)
-    logs = result.scalars().all()
-
-    return list(logs), total_count or 0

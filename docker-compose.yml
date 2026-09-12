@@ -1,31 +1,52 @@
-version: "3.8"
+version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
-      POSTGRES_DB: ${POSTGRES_DB:-yan_guan}
+      POSTGRES_DB: yan_guan
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    env_file:
-      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      # 本地默认指向 compose 内 db；可用 .env 的 DATABASE_URL 覆盖（Zeabur 由平台注入）
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/yan_guan}
+      # 本地开发后端监听 8000（配合 Vite dev 代理 /api -> :8000）；Zeabur 由平台注入 PORT=8080
+      PORT: "8000"
+      # 密钥零硬编码：一律走环境变量，SECRET_KEY 缺失即报错，不再提供 fallback
+      SECRET_KEY: ${SECRET_KEY:?请通过 .env 或环境变量设置非空 SECRET_KEY（JWT 签名密钥）}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme_in_production}@db:5432/${POSTGRES_DB:-yan_guan}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    volumes:
+      - ./logs:/app/logs
+
+  frontend:
+    # 构建上下文 = 仓库根，与 Zeabur 侧配置保持一致（gitURL + rootDirectory="" + dockerfile="frontend/Dockerfile"）
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "80:80"
     depends_on:
-      - db
-    env_file:
-      - .env
+      - backend
 
 volumes:
-  pgdata:
+  postgres_data:

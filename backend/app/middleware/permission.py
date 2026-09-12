@@ -1,74 +1,105 @@
 from functools import wraps
-from fastapi import Request, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from fastapi import HTTPException, status
+from typing import List
 
+# 角色权限映射
+ROLE_PERMISSIONS = {
+    "owner": ["create_template", "edit_template", "delete_template", "view_all_applications",
+              "edit_all_applications", "ai_generate", "manage_templates"],
+    "supervisor": ["view_all_applications", "edit_all_applications", "ai_generate"],
+    "co_manager": ["view_all_applications"],
+    "student": ["view_own_applications", "edit_own_applications"],
+    "collaborator": ["view_own_applications", "edit_own_applications"],
+    "temp_student": ["view_own_applications", "edit_own_applications"]
+}
+
+def require_permission(*permissions):
+    """权限装饰器"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # 从kwargs中获取team_context
+            team_context = kwargs.get("team_context")
+            if not team_context:
+                # 尝试从args中获取
+                for arg in args:
+                    if hasattr(arg, 'role'):
+                        team_context = {"role": arg.role}
+                        break
+            
+            if not team_context:
+                raise HTTPException(status_code=401, detail="未提供团队上下文")
+            
+            role = team_context.get("role", "")
+            allowed_permissions = ROLE_PERMISSIONS.get(role, [])
+            
+            for perm in permissions:
+                if perm not in allowed_permissions:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"无权执行此操作：{perm}"
+                    )
+            
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def check_teacher_only(role: str) -> bool:
+    """检查是否为教师角色（owner或supervisor）"""
+    return role in ["owner", "supervisor"]
+
+def check_student_only(role: str) -> bool:
+    """检查是否为学生角色"""
+    return role in ["student", "collaborator", "temp_student"]
+
+# ============ P0 批次 A：权限升级为「按团队查库校验」 ============
+# 旧的 require_permission 是静态映射（供 policies 等历史模块沿用，不破坏）；
+# 新增以下查库依赖，后端统一校验、越权返回 403，前端仅做显隐不能绕过。
+from fastapi import Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.models.user import User
 from app.models.team_member import TeamMember
-from app.models.permission import RolePermission
 
+TEACHER_ROLES = ("owner", "supervisor", "co_manager")
+STUDENT_ROLES = ("student", "collaborator", "temp_student")
+ALL_ROLES = TEACHER_ROLES + STUDENT_ROLES
 
-async def get_team_id_from_request(request: Request) -> int | None:
-    """从请求路径中提取 team_id"""
-    team_id = request.path_params.get("team_id")
-    if team_id is not None:
-        return int(team_id)
-    return None
-
-
-async def has_permission(role: str, permission_code: str, db: AsyncSession) -> bool:
-    """检查角色是否有指定权限"""
-    # 系统管理员拥有所有权限
-    # owner（教师）拥有本团队所有权限
-    if role == "owner":
-        return True
-
+async def get_team_member(
+    team_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TeamMember:
+    """查库确认当前用户是该团队的活跃成员，返回成员记录；否则 403。"""
     result = await db.execute(
-        select(RolePermission).where(
-            RolePermission.role == role,
-            RolePermission.permission_code == permission_code,
+        select(TeamMember).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == current_user.id,
+            TeamMember.is_active == True,
         )
     )
-    return result.scalar_one_or_none() is not None
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=403, detail="无权访问此团队")
+    return member
 
+def require_team_role(*roles):
+    """按团队查库校验角色：确认成员角色在 roles 内，否则 403。
 
-def require_permission(permission_code: str):
-    """权限校验装饰器"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(request: Request, *args, **kwargs):
-            user: User = kwargs.get("user") or request.state.user
-            db: AsyncSession = kwargs.get("db") or request.state.db
-
-            if user is None or db is None:
-                raise HTTPException(status_code=500, detail="权限校验上下文缺失")
-
-            # 系统管理员绕过权限检查
-            if user.is_system_admin:
-                return await func(*args, **kwargs)
-
-            team_id = await get_team_id_from_request(request)
-            if team_id is None:
-                # 某些操作不需要团队上下文（如创建团队）
-                return await func(*args, **kwargs)
-
-            # 查询用户在团队中的角色
-            result = await db.execute(
-                select(TeamMember).where(
-                    TeamMember.team_id == team_id,
-                    TeamMember.user_id == user.id,
-                )
+    用法（在路由上）：
+        member: TeamMember = Depends(require_team_role(*TEACHER_ROLES))
+    team_id 从路径或 query 自动注入，member 携带真实 role。
+    """
+    async def _check(
+        team_id: int,
+        member: TeamMember = Depends(get_team_member),
+    ) -> TeamMember:
+        if member.role not in roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"需要角色 {('/'.join(roles))}，当前 {member.role} 无此权限",
             )
-            member = result.scalar_one_or_none()
-            if member is None:
-                raise HTTPException(status_code=403, detail="您不在此团队中")
-
-            # 检查权限
-            if not await has_permission(member.role, permission_code, db):
-                raise HTTPException(status_code=403, detail="权限不足")
-
-            return await func(*args, **kwargs)
-        return wrapper
-    return decorator
+        return member
+    return _check

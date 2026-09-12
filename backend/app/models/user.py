@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Index
+from datetime import datetime
 from app.database import Base
 
 
@@ -6,14 +7,18 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False, index=True, comment="登录账号（学号/工号）")
-    password_hash = Column(String(255), nullable=False)
-    display_name = Column(String(100), nullable=False, comment="显示姓名")
-    email = Column(String(255), nullable=True)
-    phone = Column(String(20), nullable=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    name = Column(String(100), nullable=False)
+    must_change_password = Column(Boolean, default=True)
+    # P0 批次 A：账户管理扩展字段
     avatar_url = Column(String(500), nullable=True)
-    is_active = Column(Boolean, default=True)
-    is_system_admin = Column(Boolean, default=False, comment="系统管理员标识")
-    must_change_password = Column(Boolean, default=False, comment="首次登录强制改密")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    research_area = Column(String(200), nullable=True)
+    bio = Column(Text, nullable=True)
+    status = Column(String(20), default="active")  # active / disabled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_users_email', 'email'),
+    )

@@ -1,9 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  background-color: #F8FAFC;
+  color: #0F172A;
 }
+
+/* 品牌色工具类（v11.0 净白浅蓝 SaaS） */
+.brand-primary { color: #3B82F6; }
+.brand-primary-light { color: #60A5FA; }
+.brand-bg-warm { background-color: #F8FAFC; }
+.brand-ink { color: #0F172A; }
+.brand-line { border-color: #E2E8F0; }
+.brand-muted { color: #64748B; }
+
+/* 侧边栏导航项（净白侧栏） */
+.side-item { color: #334155; }
+.side-item:hover { background-color: #F1F5F9; color: #0F172A; }
+.side-active { background-color: #EFF6FF; color: #2563EB; font-weight: 600; }
+
+/* 卡片基类 */
+.card { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; }
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.slide-in {
+  animation: slideIn 0.25s ease-out;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.pulse-dot {
+  animation: pulse 2s infinite;
+}
+
+@keyframes typing {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+.typing-dot {
+  animation: typing 1.4s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }

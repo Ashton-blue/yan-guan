@@ -2,39 +2,28 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-.env
-.env.local
-*.egg
 .venv/
 venv/
+.env
+*.log
+logs/
 
 # Node
 node_modules/
 dist/
 .vite/
-*.local
 
-# IDE
-.vscode/
+# Env & secrets
+.env
+.env.*
+!.env.example
+!.env.production
+
+# IDE / OS
 .idea/
-*.swp
-*.swo
-
-# OS
+.vscode/
 .DS_Store
-Thumbs.db
 
-# Docker
-*.tar.gz
-
-# Logs
-*.log
-
-# Database
-*.db
-*.sqlite
+# 本地数据库（Zeabur 使用托管 postgres，仓库不落库文件）
 *.sqlite3
-
-# 临时文件
-*.tmp
-*.bak
+*.db
