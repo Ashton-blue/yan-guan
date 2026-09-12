@@ -306,7 +306,7 @@ async def delete_file(
     if not f or f.team_id != team_id:
         raise HTTPException(404, "文件不存在")
     await storage.delete(f.storage_path)
-    db.delete(f)
+    await db.delete(f)
     await db.commit()
     await log_audit_action(
         db, team_id=team_id, operator_id=member.user_id,
