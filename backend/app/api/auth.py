@@ -116,13 +116,13 @@ async def refresh_token(
     db: AsyncSession = Depends(get_db)
 ):
     """刷新访问令牌"""
-    from app.utils.jwt import decode_token
+    from app.utils.jwt import decode_token, get_subject
     payload = decode_token(refresh_token)
     
     if payload is None:
         raise HTTPException(status_code=401, detail="无效的刷新令牌")
     
-    user_id = payload.get("sub")
+    user_id = get_subject(payload)
     if not user_id:
         raise HTTPException(status_code=401, detail="无效的刷新令牌")
     

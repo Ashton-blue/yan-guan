@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User
 from app.models.team_member import TeamMember
-from app.utils.jwt import decode_token
+from app.utils.jwt import decode_token, get_subject
 
 security = HTTPBearer()
 
