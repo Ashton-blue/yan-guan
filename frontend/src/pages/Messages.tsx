@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { teamApi, Team } from '../api/teams'
-import { accountApi, MemberRow } from '../api/account'
+import { accountApi, MemberRow, UserProfile } from '../api/account'
 import {
   Message, MessageTab,
   messagesApi,
@@ -38,6 +38,7 @@ const fmt = (iso: string | null) => {
 const Messages: React.FC = () => {
   const [team, setTeam] = useState<Team | null>(null)
   const [members, setMembers] = useState<MemberRow[]>([])
+  const [me, setMe] = useState<UserProfile | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
@@ -65,14 +66,22 @@ const Messages: React.FC = () => {
     if (!teamId) return
     try {
       const r = await messagesApi.list(teamId, t, p, pageSize)
-      setMessages(r?.items || [])
-      setTotal(r?.total || 0)
-      setUnreadCount(r?.unread_count || 0)
+      setMessages(r?.data?.items || [])
+      setTotal(r?.data?.total || 0)
+      setUnreadCount(r?.data?.unread_count || 0)
     } catch (e: any) {
       if (e?.response?.status === 403) setForbidden(true)
       else console.error(e)
     }
   }, [teamId, pageSize])
+
+  // P4 修复：首次进入团队加载完成后自动拉取「全部」页签
+  useEffect(() => {
+    if (teamId && messages.length === 0) {
+      loadMessages(tab, 1)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId])
 
   useEffect(() => {
     const run = async () => {
@@ -84,7 +93,12 @@ const Messages: React.FC = () => {
         if (lab) {
           const m = await accountApi.listMembers(lab.id)
           setMembers(m.data || [])
+          try {
+            const meRes = await accountApi.getMe()
+            setMe(meRes.data || null)
+          } catch { /* me 失败不影响主流程 */ }
           await loadMessages(tab, 1)
+          setLoading(false)
         } else {
           setLoading(false)
         }
@@ -114,7 +128,7 @@ const Messages: React.FC = () => {
     if (!m.is_read && teamId) {
       try {
         const r = await messagesApi.markRead(teamId, m.id)
-        setUnreadCount((r as any)?.total_unread ?? unreadCount - 1)
+        setUnreadCount(r?.data?.total_unread ?? unreadCount - 1)
         await loadMessages(tab, page)
       } catch { /* ignore */ }
     }
@@ -154,6 +168,18 @@ const Messages: React.FC = () => {
     }
   }
 
+  // P5 修复：Esc 关闭弹窗/抽屉
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showDM) setShowDM(false)
+        else if (detail) setDetail(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showDM, detail])
+
   if (loading) return <div className="p-6 text-sm text-slate-400">加载中…</div>
   if (forbidden) return (
     <div className="p-6">
@@ -164,7 +190,7 @@ const Messages: React.FC = () => {
   )
 
   const totalPages = Math.ceil(total / pageSize)
-  const otherMembers = members.filter((m) => m.user_id !== teamId).slice(0, 50)
+  const otherMembers = members.filter((m) => m.user_id !== me?.id).slice(0, 50)
 
   return (
     <div className="space-y-4">

@@ -63,29 +63,29 @@ const Files: React.FC = () => {
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000) }
 
-  const loadFolders = useCallback(async (parentId: number | null) => {
-    if (!teamId) return
+  const loadFolders = useCallback(async (tid: number | undefined, parentId: number | null) => {
+    if (!tid) return
     try {
-      const r = await filesApi.listFolders(teamId, parentId ?? undefined)
-      const list = r || []
+      const r = await filesApi.listFolders(tid, parentId ?? undefined)
+      const list = r?.data || []
       if (parentId === null) setRootFolders(list)
       else setSubFolders(list)
     } catch (e: any) {
       if (e?.response?.status === 403) setForbidden(true)
       else console.error(e)
     }
-  }, [teamId])
+  }, [])
 
-  const loadFiles = useCallback(async (folderId: number | null) => {
-    if (!teamId) return
+  const loadFiles = useCallback(async (tid: number | undefined, folderId: number | null) => {
+    if (!tid) return
     try {
-      const r = await filesApi.listFiles(teamId, { folder_id: folderId })
-      setFiles(r?.items || [])
+      const r = await filesApi.listFiles(tid, { folder_id: folderId ?? undefined })
+      setFiles(r?.data?.items || [])
     } catch (e: any) {
       if (e?.response?.status === 403) setForbidden(true)
       else console.error(e)
     }
-  }, [teamId])
+  }, [])
 
   useEffect(() => {
     const run = async () => {
@@ -95,8 +95,9 @@ const Files: React.FC = () => {
         const lab = teams.find((t) => t.name.includes('研究室')) || teams[0] || null
         setTeam(lab)
         if (lab) {
-          await loadFolders(null)
-          await loadFiles(null)
+          // P3 修复：初始加载显式传 lab.id（此时 teamId 因 stale closure 仍为 undefined）
+          await loadFolders(lab.id, null)
+          await loadFiles(lab.id, null)
         }
       } catch (e: any) {
         if (e?.response?.status === 403) setForbidden(true)
@@ -113,16 +114,16 @@ const Files: React.FC = () => {
     if (id === null) {
       setCurrentFolder(null)
       setBreadcrumb([{ id: null, name: '全部文件' }])
-      loadFolders(null)
-      loadFiles(null)
+      loadFolders(teamId, null)
+      loadFiles(teamId, null)
       setSubFolders([])
     } else {
       // 构建面包屑路径：简化为 根 > 当前
       const crumb = breadcrumb.length > 1 ? [...breadcrumb.slice(0, -1), { id, name }] : [{ id: null, name: '全部文件' }, { id, name }]
       setCurrentFolder(id)
       setBreadcrumb(crumb)
-      loadFolders(id)
-      loadFiles(id)
+      loadFolders(teamId, id)
+      loadFiles(teamId, id)
     }
   }
 
@@ -132,8 +133,8 @@ const Files: React.FC = () => {
     setUploading(true)
     try {
       const r = await filesApi.uploadFile(teamId, f, currentFolder, uploadVis)
-      flash(`上传成功：${r.name} (v${r.version})`)
-      await loadFiles(currentFolder)
+      flash(`上传成功：${r.data.name} (v${r.data.version})`)
+      await loadFiles(teamId, currentFolder)
     } catch (err: any) {
       flash(err?.response?.data?.detail || '上传失败')
     } finally {
@@ -160,7 +161,7 @@ const Files: React.FC = () => {
     try {
       await filesApi.deleteFile(teamId, id)
       flash('文件已删除')
-      await loadFiles(currentFolder)
+      await loadFiles(teamId, currentFolder)
     } catch (e: any) {
       flash(e?.response?.data?.detail || '删除失败')
     }
@@ -178,7 +179,7 @@ const Files: React.FC = () => {
       await filesApi.updateFile(teamId, editTarget.id, { name: editName.trim() || undefined, visibility: editVis })
       flash('文件已更新')
       setEditTarget(null)
-      await loadFiles(currentFolder)
+      await loadFiles(teamId, currentFolder)
     } catch (e: any) {
       flash(e?.response?.data?.detail || '更新失败')
     }
@@ -191,7 +192,7 @@ const Files: React.FC = () => {
       flash('文件夹已创建')
       setShowCreateFolder(false)
       setNewFolderName('')
-      await loadFolders(currentFolder)
+      await loadFolders(teamId, currentFolder)
     } catch (e: any) {
       flash(e?.response?.data?.detail || '创建失败')
     }
@@ -203,7 +204,7 @@ const Files: React.FC = () => {
     try {
       await filesApi.deleteFolder(teamId, id)
       flash('文件夹已删除')
-      await loadFolders(currentFolder)
+      await loadFolders(teamId, currentFolder)
     } catch (e: any) {
       flash(e?.response?.data?.detail || '删除失败')
     }
@@ -227,7 +228,7 @@ const Files: React.FC = () => {
         <h1 className="text-xl font-bold text-brand-ink">文件管理</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {/* 视图切换 */}
-          <div className="flex rounded-lg overflow-hidden border border-brand-line text-xs">
+          <div className="flex rounded-lg overflow-hidden border border-brand-line text-xs z-10 relative">
             <button
               onClick={() => setView('grid')}
               className={`px-3 py-1.5 ${view === 'grid' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-white text-slate-500'}`}
