@@ -131,8 +131,18 @@ async def create_meeting(
         created_by=member.user_id,
     )
     db.add(m)
-    await db.commit()
-    await db.refresh(m)
+    await db.flush()
+
+    # P0 批次 B：会议提醒通知（通知团队活跃成员，跳过组织者自己）
+    try:
+        from app.api.messages import notify_meeting_created
+        from app.models.team_member import TeamMember as TM
+        from sqlalchemy import select as _sel
+        res = await db.execute(_sel(TM.user_id).where(TM.team_id == team_id, TM.is_active == True))
+        all_uids = [row[0] for row in res.all()]
+        await notify_meeting_created(db, team_id, m.id, m.title, member.user_id, all_uids)
+    except Exception:
+        pass  # 通知失败不阻塞主流程
 
     await log_audit_action(
         db, team_id=team_id,

@@ -9,6 +9,8 @@ import Members from './pages/Members'
 import PolicyAssistant from './pages/PolicyAssistant'
 import Account from './pages/Account'
 import Meetings from './pages/Meetings'
+import Files from './pages/Files'
+import Messages from './pages/Messages'
 
 function App() {
   return (
@@ -22,6 +24,8 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="meetings" element={<Meetings />} />
+            <Route path="files" element={<Files />} />
+            <Route path="messages" element={<Messages />} />
             <Route path="members" element={<Members />} />
             <Route path="account" element={<Account />} />
             <Route path="policy" element={<PolicyAssistant />} />

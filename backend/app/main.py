@@ -13,6 +13,8 @@ from app.api.policies import policies_router
 from app.api.users import router as users_router
 from app.api.invites import router as invites_router
 from app.api.meetings import router as meetings_router
+from app.api.files import router as files_router
+from app.api.messages import router as messages_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,8 +25,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="研管系统 API",
-    description="研究室管理系统 - Batch-1 + P1阶段1.3 + P0批次A(账户/会议管理)",
-    version="1.4.0",
+    description="研究室管理系统 - P0批次A(账户/会议) + P0批次B(文件/讯息)",
+    version="1.5.0",
     lifespan=lifespan
 )
 
@@ -48,10 +50,13 @@ app.include_router(policies_router, prefix="/api/v1", tags=["政策助手"])
 app.include_router(users_router, prefix="/api/v1", tags=["账户管理"])
 app.include_router(invites_router, prefix="/api/v1", tags=["团队邀请"])
 app.include_router(meetings_router, prefix="/api/v1", tags=["组会管理"])
+# P0 批次 B：文件管理 / 讯息管理
+app.include_router(files_router, prefix="/api/v1")
+app.include_router(messages_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
-    return {"message": "研管系统 API v1.4.0", "status": "running"}
+    return {"message": "研管系统 API v1.5.0", "status": "running"}
 
 @app.get("/health")
 async def health():

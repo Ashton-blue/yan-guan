@@ -5,6 +5,8 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 const NAV = [
   { to: '/dashboard', label: '仪表盘', icon: '📊' },
   { to: '/meetings', label: '组会管理', icon: '📅' },
+  { to: '/files', label: '文件管理', icon: '📁' },
+  { to: '/messages', label: '讯息中心', icon: '📩' },
   { to: '/members', label: '成员管理', icon: '👥' },
   { to: '/account', label: '账户管理', icon: '👤' },
   { to: '/policy', label: '政策助手', icon: '📜' },
