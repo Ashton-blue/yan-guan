@@ -1,6 +1,8 @@
 import api from './client'
 
 // ---------- 文件管理（P0 批次 B · 模块3） ----------
+// 注意：client.ts 的 axios 实例不解包 response.data，
+// 与 teams.ts / meetings.ts 保持一致，调用方通过 r.data 取业务体。
 
 export interface Folder {
   id: number
@@ -44,18 +46,18 @@ export interface FileUpdatePayload {
 
 export const filesApi = {
   listFolders: (teamId: number, parentId?: number | null) =>
-    api.get<any, Folder[]>('/folders', {
+    api.get<any, { data: Folder[] }>('/folders', {
       params: { team_id: teamId, parent_id: parentId ?? undefined },
     }),
 
   createFolder: (teamId: number, data: { name: string; parent_id?: number | null; visibility?: string }) =>
-    api.post<any, Folder>('/folders', data, { params: { team_id: teamId } }),
+    api.post<any, { data: Folder }>('/folders', data, { params: { team_id: teamId } }),
 
   deleteFolder: (teamId: number, folderId: number) =>
-    api.delete<any, { message: string }>(`/folders/${folderId}`, { params: { team_id: teamId } }),
+    api.delete<any, { data: { message: string } }>(`/folders/${folderId}`, { params: { team_id: teamId } }),
 
   listFiles: (teamId: number, params: { folder_id?: number | null; page?: number; page_size?: number }) =>
-    api.get<any, FileListResponse>('/files', {
+    api.get<any, { data: FileListResponse }>('/files', {
       params: { team_id: teamId, ...params },
     }),
 
@@ -64,7 +66,7 @@ export const filesApi = {
     formData.append('file', file)
     const params: Record<string, any> = { team_id: teamId, visibility: visibility || 'team' }
     if (folderId != null) params.folder_id = folderId
-    return api.post<any, { id: number; name: string; version: number; message: string }>(
+    return api.post<any, { data: { id: number; name: string; version: number; message: string } }>(
       '/files/upload',
       formData,
       { params, headers: { 'Content-Type': 'multipart/form-data' } },
@@ -78,8 +80,8 @@ export const filesApi = {
   },
 
   updateFile: (teamId: number, fileId: number, data: FileUpdatePayload) =>
-    api.patch<any, { message: string; id: number }>(`/files/${fileId}`, data, { params: { team_id: teamId } }),
+    api.patch<any, { data: { message: string; id: number } }>(`/files/${fileId}`, data, { params: { team_id: teamId } }),
 
   deleteFile: (teamId: number, fileId: number) =>
-    api.delete<any, { message: string }>(`/files/${fileId}`, { params: { team_id: teamId } }),
+    api.delete<any, { data: { message: string } }>(`/files/${fileId}`, { params: { team_id: teamId } }),
 }

@@ -1,6 +1,7 @@
 import api from './client'
 
 // ---------- 讯息管理（P0 批次 B · 模块4） ----------
+// 与 teams.ts / meetings.ts 保持一致：调用方通过 r.data 取业务体。
 
 export interface Message {
   id: number
@@ -30,17 +31,17 @@ export type MessageTab = 'all' | 'notifications' | 'at_me'
 
 export const messagesApi = {
   list: (teamId: number, tab: MessageTab = 'all', page = 1, pageSize = 20) =>
-    api.get<any, MessageListResponse>('/messages', {
+    api.get<any, { data: MessageListResponse }>('/messages', {
       params: { team_id: teamId, tab, page, page_size: pageSize },
     }),
 
   markRead: (teamId: number, msgId: number) =>
-    api.put<any, { message: string; total_unread: number }>(`/messages/${msgId}/read`, null, {
+    api.put<any, { data: { message: string; total_unread: number } }>(`/messages/${msgId}/read`, null, {
       params: { team_id: teamId },
     }),
 
   markAllRead: (teamId: number) =>
-    api.put<any, { message: string; total_unread: number }>('/messages/read-all', null, {
+    api.put<any, { data: { message: string; total_unread: number } }>('/messages/read-all', null, {
       params: { team_id: teamId },
     }),
 
@@ -48,5 +49,5 @@ export const messagesApi = {
     teamId: number,
     data: { recipient_id: number; title: string; content?: string | null; msg_type?: string },
   ) =>
-    api.post<any, Message>('/messages', data, { params: { team_id: teamId } }),
+    api.post<any, { data: Message }>('/messages', data, { params: { team_id: teamId } }),
 }
