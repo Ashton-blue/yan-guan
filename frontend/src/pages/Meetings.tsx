@@ -29,6 +29,7 @@ const Meetings: React.FC = () => {
   const [filter, setFilter] = useState<'all' | MeetingType>('all')
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
+  const [forbidden, setForbidden] = useState(false)
 
   // 详情抽屉
   const [detail, setDetail] = useState<MeetingDetail | null>(null)
@@ -62,8 +63,9 @@ const Meetings: React.FC = () => {
     try {
       const r = await meetingsApi.list(teamId, f === 'all' ? undefined : f)
       setMeetings(r.data || [])
-    } catch (e) {
-      console.error(e)
+    } catch (e: any) {
+      if (e?.response?.status === 403) setForbidden(true)
+      else console.error(e)
     } finally {
       setLoading(false)
     }
@@ -80,9 +82,12 @@ const Meetings: React.FC = () => {
           const m = await accountApi.listMembers(lab.id)
           setMembers(m.data || [])
           await loadMeetings(filter)
+        } else {
+          setLoading(false)
         }
-      } catch (e) {
-        console.error(e)
+      } catch (e: any) {
+        if (e?.response?.status === 403) setForbidden(true)
+        else console.error(e)
         setLoading(false)
       }
     }
@@ -205,12 +210,18 @@ const Meetings: React.FC = () => {
             {team && <span className="ml-2 text-brand-primary">| {team.name}</span>}
           </p>
         </div>
-        {canManage && (
+        {canManage && !forbidden && (
           <button onClick={() => setShowCreate(true)} className="bg-brand-primary text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-active transition">
             + 新建组会
           </button>
         )}
       </div>
+
+      {forbidden && (
+        <div className="mb-5 text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3">
+          ⚠️ 您没有访问该团队的权限。请联系团队管理员添加您为成员，或切换到您所属的团队。
+        </div>
+      )}
 
       {msg && <div className="mb-4 text-sm bg-brand-soft-blue text-brand-active border border-brand-line rounded-lg px-3 py-2">{msg}</div>}
 
