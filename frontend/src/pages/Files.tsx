@@ -228,7 +228,7 @@ const Files: React.FC = () => {
         <h1 className="text-xl font-bold text-brand-ink">文件管理</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {/* 视图切换 */}
-          <div className="flex rounded-lg overflow-hidden border border-brand-line text-xs z-10 relative">
+          <div className="flex rounded-lg overflow-hidden border border-brand-line text-xs">
             <button
               onClick={() => setView('grid')}
               className={`px-3 py-1.5 ${view === 'grid' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-white text-slate-500'}`}
@@ -242,19 +242,20 @@ const Files: React.FC = () => {
               列表
             </button>
           </div>
-          {/* 上传按钮 */}
+          {/* 上传按钮 + 可见性选择（NEW-1 修复：select 流式占位，不再 absolute 重叠） */}
           {canManage && (
-            <div className="relative">
-              <input ref={fileInputRef} type="file" className="hidden" onChange={doUpload} />
+            <div className="flex items-center gap-1">
               <select
                 value={uploadVis}
                 onChange={(e) => setUploadVis(e.target.value)}
-                className="absolute right-full mr-1 top-0 h-full w-24 text-xs border border-brand-line rounded-lg pr-2 bg-white"
+                aria-label="上传可见性"
+                className="h-9 text-xs border border-brand-line rounded-lg pr-2 pl-2 bg-white"
               >
                 <option value="team">团队可见</option>
                 <option value="teacher_only">仅导师</option>
                 <option value="private">仅本人</option>
               </select>
+              <input ref={fileInputRef} type="file" className="hidden" onChange={doUpload} />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
