@@ -1,7 +1,7 @@
 """文件管理 API：文件夹 + 文件上传/下载/列表/重命名/移动/删除"""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_, or_, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
@@ -10,7 +10,7 @@ from app.middleware.permission import get_team_member, require_team_role, TEACHE
 from app.models.file_management import Folder, FileRecord, Message
 from app.models.user import User
 from app.models.team_member import TeamMember
-from app.schemas.file_management import FolderCreate, FolderOut, FileOut, FileUpdate
+from app.schemas.file_management import FolderCreate, FolderOut, FileOut, FileUpdate, FileSearchResult, FolderSearchResult
 from app.services.storage import storage
 from app.services.audit_service import log_audit_action
 import mimetypes
@@ -317,3 +317,214 @@ async def delete_file(
         user_agent=request.headers.get("user-agent", "")[:500],
     )
     return {"message": "文件已删除"}
+
+
+# ============ 搜索 ============
+TYPE_CATEGORIES = {
+    "document": (
+        "application/pdf", "application/msword", "application/vnd.openxmlformats",
+        "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+        "text/", "application/rtf",
+    ),
+    "image": ("image/",),
+    "video": ("video/",),
+    "audio": ("audio/",),
+    "archive": (
+        "application/zip", "application/x-rar-compressed",
+        "application/x-7z-compressed", "application/x-tar", "application/gzip",
+    ),
+}
+
+
+def _type_conditions(column, category: str):
+    """根据类型分类返回 SQLAlchemy 过滤条件。"""
+    if category == "other":
+        all_prefixes = [p for prefixes in TYPE_CATEGORIES.values() for p in prefixes]
+        conds = [column.startswith(p) for p in all_prefixes]
+        return not_(or_(*conds, column.is_(None)))
+    prefixes = TYPE_CATEGORIES.get(category, ())
+    if not prefixes:
+        return None
+    return or_(*[column.startswith(p) for p in prefixes])
+
+
+async def _get_descendant_folder_ids(db: AsyncSession, team_id: int, root_id: Optional[int]):
+    """递归查询 root_id 下所有后代文件夹 ID（含 root_id 自身）。
+    root_id=None 时返回该团队所有文件夹 ID。
+    """
+    # 基础：起点文件夹
+    base = select(Folder.id, Folder.parent_id).where(Folder.team_id == team_id)
+    if root_id is not None:
+        base = base.where(Folder.id == root_id)
+    else:
+        base = base  # 全团队所有文件夹
+    base = base.cte("desc_folders", recursive=True)
+
+    # 递归：子文件夹
+    recursive = select(Folder.id, Folder.parent_id).join(
+        base, Folder.parent_id == base.c.id
+    )
+    cte = base.union_all(recursive)
+    result = await db.execute(select(cte.c.id))
+    return {row[0] for row in result.all()}
+
+
+async def _build_folder_path(db: AsyncSession, team_id: int, folder_id: Optional[int]) -> Optional[str]:
+    """向上追溯构建文件夹路径（不含自身名字 → 给文件用：parent_id 开始）。
+    传入 folder_id 为 None 时返回 None。
+    """
+    if not folder_id:
+        return None
+    parts = []
+    current_id = folder_id
+    visited = set()
+    while current_id and current_id not in visited:
+        visited.add(current_id)
+        fobj = await db.get(Folder, current_id)
+        if not fobj or fobj.team_id != team_id:
+            break
+        parts.insert(0, fobj.name)
+        current_id = fobj.parent_id
+    return "/".join(parts) if parts else None
+
+
+@router.get("/search", tags=[TAG])
+async def search_files(
+    team_id: int,
+    q: str = Query("", min_length=0, max_length=100),
+    file_type: Optional[str] = Query(None, pattern="^(document|image|video|audio|archive|other)$"),
+    sort_by: str = Query("newest", pattern="^(newest|oldest|name)$"),
+    recursive: bool = Query(True),
+    folder_id: Optional[int] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    member: TeamMember = Depends(get_team_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """搜索文件（默认递归含子目录），同时返回匹配的文件夹。
+    - q: 关键词模糊匹配名称（空关键词=不筛选，可当类型筛选用）
+    - file_type: 按类型筛选（document/image/video/audio/archive/other）
+    - sort_by: newest / oldest / name
+    - recursive: 是否递归子目录
+    - folder_id: 限定搜索根目录（None=团队全部）
+    """
+    keyword = q.strip()
+    like = f"%{keyword}%"
+
+    # 1. 确定文件夹范围
+    if recursive and (folder_id is not None):
+        # 指定 folder + 递归 → 取该文件夹及其所有后代
+        descendant_ids = await _get_descendant_folder_ids(db, team_id, folder_id)
+        file_folder_ids = list(descendant_ids)
+        folder_scope_ids = list(descendant_ids)
+    elif (not recursive) and (folder_id is not None):
+        # 指定 folder + 不递归 → 仅直接子级
+        file_folder_ids = [folder_id]
+        folder_scope_ids = [folder_id] if folder_id else []
+    elif recursive and folder_id is None:
+        # 全团队 + 递归 → 不加 folder_id 过滤（全团队文件）
+        file_folder_ids = None  # None 表示不过滤
+        folder_scope_ids = None
+    else:
+        # folder_id=None + 不递归 → 根目录（folder_id IS NULL）
+        file_folder_ids = []  # 用特殊值表示根目录
+
+    # 2. 文件查询
+    file_q = select(FileRecord).where(FileRecord.team_id == team_id)
+    file_total_q = select(func.count()).select_from(FileRecord.__table__).where(
+        FileRecord.team_id == team_id
+    )
+
+    # folder 范围过滤
+    if file_folder_ids is None:
+        # 全团队，不过滤
+        pass
+    elif len(file_folder_ids) == 0:
+        # 根目录
+        file_q = file_q.where(FileRecord.folder_id.is_(None))
+        file_total_q = file_total_q.where(FileRecord.folder_id.is_(None))
+    else:
+        file_q = file_q.where(FileRecord.folder_id.in_(file_folder_ids))
+        file_total_q = file_total_q.where(FileRecord.folder_id.in_(file_folder_ids))
+
+    # 关键词
+    if keyword:
+        file_q = file_q.where(FileRecord.name.ilike(like))
+        file_total_q = file_total_q.where(FileRecord.name.ilike(like))
+
+    # 类型
+    if file_type:
+        cond = _type_conditions(FileRecord.mime_type, file_type)
+        if cond is not None:
+            file_q = file_q.where(cond)
+            file_total_q = file_total_q.where(cond)
+
+    # 排序
+    if sort_by == "newest":
+        file_q = file_q.order_by(FileRecord.created_at.desc())
+    elif sort_by == "oldest":
+        file_q = file_q.order_by(FileRecord.created_at.asc())
+    else:  # name
+        file_q = file_q.order_by(FileRecord.name.asc())
+
+    file_total = await db.scalar(file_total_q) or 0
+    file_result = await db.execute(
+        file_q.offset((page - 1) * page_size).limit(page_size)
+    )
+    files = file_result.scalars().all()
+
+    # 3. 路径 & 上传者
+    folder_path_map: dict = {}
+    folder_ids_in_files = list({f.folder_id for f in files if f.folder_id})
+    for fid in folder_ids_in_files:
+        folder_path_map[fid] = await _build_folder_path(db, team_id, fid)
+
+    up_ids = list({f.uploaded_by for f in files if f.uploaded_by})
+    names: dict = {}
+    if up_ids:
+        ur = await db.execute(select(User.id, User.name).where(User.id.in_(up_ids)))
+        names = {row[0]: row[1] for row in ur.all()}
+
+    file_out = []
+    for f in files:
+        d = {c.name: getattr(f, c.name) for c in f.__table__.columns}
+        d["uploaded_by_name"] = names.get(f.uploaded_by)
+        d["folder_path"] = folder_path_map.get(f.folder_id)
+        file_out.append(d)
+
+    # 4. 文件夹搜索（前 20 条匹配）
+    folder_q = select(Folder).where(Folder.team_id == team_id)
+    if folder_scope_ids is not None:
+        if len(folder_scope_ids) == 0:
+            # 根目录下的直接子文件夹
+            folder_q = folder_q.where(Folder.parent_id == folder_id) if folder_id else \
+                folder_q.where(Folder.parent_id.is_(None))
+        else:
+            # 后代范围内（排除起点自身，只看子/孙级匹配；但为了简单包含自身也可）
+            folder_q = folder_q.where(Folder.id.in_(folder_scope_ids))
+    if keyword:
+        folder_q = folder_q.where(Folder.name.ilike(like))
+    folder_q = folder_q.order_by(Folder.name).limit(20)
+    folder_result = await db.execute(folder_q)
+    folders = folder_result.scalars().all()
+
+    folder_out = []
+    for fo in folders:
+        d = {c.name: getattr(fo, c.name) for c in fo.__table__.columns}
+        # 路径 = 父级链（不含自己）
+        d["folder_path"] = await _build_folder_path(db, team_id, fo.parent_id)
+        folder_out.append(d)
+
+    return {
+        "files": {
+            "items": file_out,
+            "total": file_total,
+            "page": page,
+            "page_size": page_size,
+        },
+        "folders": {
+            "items": folder_out,
+            "total": len(folder_out),
+        },
+        "keyword": keyword,
+    }
