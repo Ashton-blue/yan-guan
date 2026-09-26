@@ -13,6 +13,7 @@ from app.models.team_member import TeamMember
 from app.schemas.file_management import FolderCreate, FolderOut, FileOut, FileUpdate, FileSearchResult, FolderSearchResult
 from app.services.storage import storage
 from app.services.audit_service import log_audit_action
+from app.services.sse_manager import sse_manager
 import mimetypes
 
 router = APIRouter()
@@ -194,6 +195,26 @@ async def upload_file(
     )
     db.add(msg)
     await db.commit()
+
+    # SSE 广播到整个团队（文件列表实时刷新）
+    import asyncio
+
+    async def _push_sse():
+        try:
+            payload = {
+                "type": "file_upload",
+                "team_id": team_id,
+                "file_id": file_id,
+                "file_name": name,
+                "folder_id": folder_id,
+                "version": version,
+                "uploaded_by": member.user_id,
+            }
+            await sse_manager.broadcast_to_team(team_id, "file_upload", payload)
+        except Exception:
+            pass
+
+    asyncio.create_task(_push_sse())
 
     return {"id": file_id, "name": name, "version": version, "message": "上传成功"}
 

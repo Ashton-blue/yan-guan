@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 from app.database import get_db
 from app.middleware.permission import get_team_member
@@ -10,10 +11,30 @@ from app.models.user import User
 from app.models.team_member import TeamMember
 from app.schemas.file_management import MessageCreate, MessageOut, MessageReadResult
 from app.services.audit_service import log_audit_action
+from app.services.sse_manager import sse_manager
 
 router = APIRouter()
 
 TAG = "讯息管理"
+
+
+async def _sse_push_message(team_id: int, user_id: int, message_obj: Message, sender_name: Optional[str] = None):
+    """将一条消息通过 SSE 推送给指定用户（后台任务，失败不阻塞）。"""
+    import asyncio
+
+    async def _push():
+        try:
+            from app.models.user import User
+            # 组装与 list_messages 一致的结构
+            data = {c.name: getattr(message_obj, c.name) for c in message_obj.__table__.columns}
+            data["sender_name"] = sender_name
+            # 额外带上未读数前端能增量，但复杂度高；先推消息本体，前端自己 unread+1
+            await sse_manager.send_to_user(team_id, user_id, "message", data)
+        except Exception:
+            # SSE 推送失败不影响主流程
+            pass
+
+    asyncio.create_task(_push())
 
 
 @router.get("/messages", tags=[TAG])
@@ -153,12 +174,19 @@ async def send_direct_message(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent", "")[:500],
     )
+    # SSE 推送给收件人
+    await _sse_push_message(team_id, data.recipient_id, msg, sender_user.name if sender_user else None)
     return msg
 
 
 # ============ 内部通知触发（供其他模块调用）============
 async def notify_meeting_created(db: AsyncSession, team_id: int, meeting_id: int, meeting_title: str, organizer_id: int, user_ids: list):
     """会议创建后通知被邀请者"""
+    from app.models.user import User
+    # 查组织者姓名
+    organizer = await db.get(User, organizer_id)
+    organizer_name = organizer.name if organizer else None
+
     for uid in user_ids:
         if uid == organizer_id:
             continue
@@ -170,6 +198,29 @@ async def notify_meeting_created(db: AsyncSession, team_id: int, meeting_id: int
         )
         db.add(m)
     await db.commit()
+
+    # SSE 推送：逐个推送给被邀请者
+    import asyncio
+
+    async def _push_all():
+        for uid in user_ids:
+            if uid == organizer_id:
+                continue
+            # 重新查询消息对象（因为 add 后还没 refresh，简单起见重新构建 dict）
+            # 实际项目可用返回的对象；这里只推标题即可
+            try:
+                payload = {
+                    "type": "meeting_created",
+                    "team_id": team_id,
+                    "meeting_id": meeting_id,
+                    "title": f"会议邀请：{meeting_title}",
+                    "sender_name": organizer_name,
+                }
+                await sse_manager.send_to_user(team_id, uid, "meeting_created", payload)
+            except Exception:
+                pass
+
+    asyncio.create_task(_push_all())
 
 
 async def notify_action_item_assigned(db: AsyncSession, team_id: int, action_id: int, assignee_id: int, title: str, assigner_id: int):
@@ -183,6 +234,24 @@ async def notify_action_item_assigned(db: AsyncSession, team_id: int, action_id:
     db.add(m)
     await db.commit()
 
+    import asyncio
+
+    async def _push():
+        try:
+            payload = {
+                "type": "action_item_assigned",
+                "team_id": team_id,
+                "action_id": action_id,
+                "title": title,
+            }
+            await sse_manager.send_to_user(team_id, assignee_id, "action_item_assigned", payload)
+            # 同时推一条 message 事件让消息列表自动刷新
+            await _sse_push_message(team_id, assignee_id, m)
+        except Exception:
+            pass
+
+    asyncio.create_task(_push())
+
 
 async def send_system_notification(db: AsyncSession, team_id: int, user_id: int, title: str, content: str = None):
     """系统通知"""
@@ -192,3 +261,13 @@ async def send_system_notification(db: AsyncSession, team_id: int, user_id: int,
     )
     db.add(m)
     await db.commit()
+
+    import asyncio
+
+    async def _push():
+        try:
+            await _sse_push_message(team_id, user_id, m)
+        except Exception:
+            pass
+
+    asyncio.create_task(_push())
