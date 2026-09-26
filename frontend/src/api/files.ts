@@ -111,7 +111,7 @@ export const filesApi = {
     page?: number
     page_size?: number
   }) =>
-    api.get<any, { data: SearchResponse }>('/search', {
+    api.get<any, { data: SearchResponse }>('/files/search', {
       params: { team_id: teamId, ...params, file_type: params.file_type === 'all' ? undefined : params.file_type },
     }),
 }

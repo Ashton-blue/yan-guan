@@ -409,7 +409,7 @@ async def _build_folder_path(db: AsyncSession, team_id: int, folder_id: Optional
     return "/".join(parts) if parts else None
 
 
-@router.get("/search", tags=[TAG])
+@router.get("/files/search", tags=[TAG])
 async def search_files(
     team_id: int,
     q: str = Query("", min_length=0, max_length=100),
