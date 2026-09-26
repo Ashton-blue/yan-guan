@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { teamApi, Team } from '../api/teams'
 import {
-  Folder, FileItem,
-  filesApi,
+  Folder, FileItem, FolderSearchItem,
+  filesApi, FileTypeFilter, FileSortBy,
 } from '../api/files'
 
 const MANAGER_ROLES = ['owner', 'supervisor', 'co_manager']
@@ -43,6 +43,18 @@ const Files: React.FC = () => {
   // 文件列表
   const [files, setFiles] = useState<FileItem[]>([])
   const [view, setView] = useState<'grid' | 'list'>('grid')
+
+  // 搜索
+  const [searchMode, setSearchMode] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchType, setSearchType] = useState<FileTypeFilter>('all')
+  const [searchSort, setSearchSort] = useState<FileSortBy>('newest')
+  const [searchRecursive, setSearchRecursive] = useState(true)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchFileResults, setSearchFileResults] = useState<FileItem[]>([])
+  const [searchFolderResults, setSearchFolderResults] = useState<FolderSearchItem[]>([])
+  const [searchTotal, setSearchTotal] = useState(0)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 预览
   const [preview, setPreview] = useState<FileItem | null>(null)
@@ -87,6 +99,54 @@ const Files: React.FC = () => {
     }
   }, [])
 
+  // 搜索
+  const doSearch = useCallback(async (tid: number | undefined, q: string, type: FileTypeFilter, sort: FileSortBy, recursive: boolean, folderId: number | null) => {
+    if (!tid) return
+    setSearchLoading(true)
+    try {
+      const r = await filesApi.search(tid, {
+        q,
+        file_type: type,
+        sort_by: sort,
+        recursive,
+        folder_id: folderId ?? undefined,
+        page: 1,
+        page_size: 50,
+      })
+      setSearchFileResults(r?.data?.files?.items || [])
+      setSearchFolderResults(r?.data?.folders?.items || [])
+      setSearchTotal(r?.data?.files?.total || 0)
+    } catch (e: any) {
+      if (e?.response?.status === 403) setForbidden(true)
+      else console.error(e)
+    } finally {
+      setSearchLoading(false)
+    }
+  }, [])
+
+  const triggerSearch = useCallback((q: string) => {
+    if (!teamId) return
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (q.trim() === '' && searchType === 'all') {
+      // 空关键词 + 全类型 = 退出搜索
+      setSearchMode(false)
+      setSearchFileResults([])
+      setSearchFolderResults([])
+      return
+    }
+    setSearchMode(true)
+    searchTimerRef.current = setTimeout(() => {
+      doSearch(teamId, q, searchType, searchSort, searchRecursive, currentFolder)
+    }, 300)
+  }, [teamId, searchType, searchSort, searchRecursive, currentFolder, doSearch])
+
+  // 搜索参数变化时重新搜
+  useEffect(() => {
+    if (!searchMode || !teamId) return
+    doSearch(teamId, searchQuery, searchType, searchSort, searchRecursive, currentFolder)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchType, searchSort, searchRecursive])
+
   useEffect(() => {
     const run = async () => {
       try {
@@ -111,6 +171,11 @@ const Files: React.FC = () => {
 
   // 面包屑
   const openFolder = (id: number | null, name: string) => {
+    // 退出搜索模式
+    setSearchMode(false)
+    setSearchQuery('')
+    setSearchFileResults([])
+    setSearchFolderResults([])
     if (id === null) {
       setCurrentFolder(null)
       setBreadcrumb([{ id: null, name: '全部文件' }])
@@ -125,6 +190,26 @@ const Files: React.FC = () => {
       loadFolders(teamId, id)
       loadFiles(teamId, id)
     }
+  }
+
+  const jumpToFolderFromSearch = (folderId: number, folderName: string, parentPath: string | null | undefined) => {
+    // 从搜索结果跳到文件夹：先加载完整路径（简化：直接进入该文件夹，面包屑只显示根+该文件夹）
+    setSearchMode(false)
+    setSearchQuery('')
+    setSearchFileResults([])
+    setSearchFolderResults([])
+    setCurrentFolder(folderId)
+    // 面包屑使用 folder_path
+    const pathParts = parentPath ? parentPath.split('/') : []
+    const crumb: { id: number | null; name: string }[] = [{ id: null, name: '全部文件' }]
+    // 中间层级暂时只显示文字（不挂 id），最后一级挂真实 id
+    for (let i = 0; i < pathParts.length; i++) {
+      crumb.push({ id: null, name: pathParts[i] })
+    }
+    crumb.push({ id: folderId, name: folderName })
+    setBreadcrumb(crumb)
+    loadFolders(teamId, folderId)
+    loadFiles(teamId, folderId)
   }
 
   const doUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,6 +305,8 @@ const Files: React.FC = () => {
   )
 
   const currentFolders = currentFolder === null ? rootFolders : subFolders
+  const displayFiles = searchMode ? searchFileResults : files
+  const displayFolders = searchMode ? searchFolderResults : currentFolders
 
   return (
     <div className="space-y-4">
@@ -227,22 +314,79 @@ const Files: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-brand-ink">文件管理</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* 视图切换 */}
-          <div className="flex rounded-lg overflow-hidden border border-brand-line text-xs">
-            <button
-              onClick={() => setView('grid')}
-              className={`px-3 py-1.5 ${view === 'grid' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-white text-slate-500'}`}
-            >
-              网格
-            </button>
-            <button
-              onClick={() => setView('list')}
-              className={`px-3 py-1.5 ${view === 'list' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-white text-slate-500'}`}
-            >
-              列表
-            </button>
+          {/* 搜索框 */}
+          <div className="relative">
+            <input
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); triggerSearch(e.target.value) }}
+              placeholder="🔍 搜索文件 / 文件夹…"
+              className="w-56 sm:w-64 md:w-72 h-9 text-sm border border-brand-line rounded-xl pl-3 pr-3 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+            {searchMode && (
+              <button
+                onClick={() => { setSearchQuery(''); setSearchMode(false); setSearchFileResults([]); setSearchFolderResults([]) }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
+                title="清除搜索"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          {/* 上传按钮 + 可见性选择（NEW-1 修复：select 流式占位，不再 absolute 重叠） */}
+          {/* 类型筛选 */}
+          <select
+            value={searchType}
+            onChange={(e) => {
+              const t = e.target.value as FileTypeFilter
+              setSearchType(t)
+              if (searchMode || t !== 'all' || searchQuery) {
+                setSearchMode(true)
+                triggerSearch(searchQuery)
+              }
+            }}
+            aria-label="文件类型"
+            className="h-9 text-xs border border-brand-line rounded-xl pr-2 pl-2 bg-white"
+          >
+            <option value="all">全部类型</option>
+            <option value="document">文档</option>
+            <option value="image">图片</option>
+            <option value="video">视频</option>
+            <option value="audio">音频</option>
+            <option value="archive">压缩包</option>
+            <option value="other">其他</option>
+          </select>
+          {/* 排序 */}
+          <select
+            value={searchSort}
+            onChange={(e) => {
+              const s = e.target.value as FileSortBy
+              setSearchSort(s)
+              if (searchMode) triggerSearch(searchQuery)
+            }}
+            aria-label="排序方式"
+            className="h-9 text-xs border border-brand-line rounded-xl pr-2 pl-2 bg-white"
+          >
+            <option value="newest">最新上传</option>
+            <option value="oldest">最早上传</option>
+            <option value="name">按名称</option>
+          </select>
+          {/* 视图切换（非搜索模式才显示） */}
+          {!searchMode && (
+            <div className="flex rounded-lg overflow-hidden border border-brand-line text-xs">
+              <button
+                onClick={() => setView('grid')}
+                className={`px-3 py-1.5 ${view === 'grid' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-white text-slate-500'}`}
+              >
+                网格
+              </button>
+              <button
+                onClick={() => setView('list')}
+                className={`px-3 py-1.5 ${view === 'list' ? 'bg-blue-50 text-blue-700 font-medium' : 'bg-white text-slate-500'}`}
+              >
+                列表
+              </button>
+            </div>
+          )}
+          {/* 上传按钮 + 可见性选择 */}
           {canManage && (
             <div className="flex items-center gap-1">
               <select
@@ -277,81 +421,121 @@ const Files: React.FC = () => {
         </div>
       </div>
 
-      {/* 面包屑 */}
-      <nav className="flex items-center gap-1 text-sm text-slate-500 flex-wrap">
-        {breadcrumb.map((b, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && <span>/</span>}
-            <button
-              onClick={() => openFolder(b.id, b.name)}
-              className={`hover:text-blue-600 ${i === breadcrumb.length - 1 ? 'font-medium text-brand-ink' : ''}`}
-            >
-              {b.name}
-            </button>
-          </React.Fragment>
-        ))}
-      </nav>
+      {/* 搜索模式：递归范围切换 + 结果统计 */}
+      {searchMode && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={searchRecursive}
+                onChange={(e) => setSearchRecursive(e.target.checked)}
+                className="accent-blue-600"
+              />
+              包含子目录
+            </label>
+            <span className="text-slate-300">|</span>
+            <span>
+              找到 <span className="font-medium text-brand-ink">{searchTotal}</span> 个文件
+              {searchFolderResults.length > 0 && `、${searchFolderResults.length} 个文件夹`}
+            </span>
+          </div>
+          {searchLoading && <span>搜索中…</span>}
+        </div>
+      )}
+
+      {/* 面包屑（搜索模式隐藏） */}
+      {!searchMode && (
+        <nav className="flex items-center gap-1 text-sm text-slate-500 flex-wrap">
+          {breadcrumb.map((b, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span>/</span>}
+              <button
+                onClick={() => b.id !== null ? openFolder(b.id, b.name) : openFolder(null, '全部文件')}
+                className={`hover:text-blue-600 ${i === breadcrumb.length - 1 ? 'font-medium text-brand-ink' : ''}`}
+              >
+                {b.name}
+              </button>
+            </React.Fragment>
+          ))}
+        </nav>
+      )}
 
       {/* 消息提示 */}
       {msg && <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">{msg}</div>}
 
-      {/* 子文件夹网格 */}
-      {currentFolders.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-          {currentFolders.map((f) => (
-            <div key={f.id} className="relative group">
-              <button
-                onClick={() => openFolder(f.id, f.name)}
-                className="w-full p-3 rounded-xl border border-brand-line bg-white hover:border-blue-300 hover:bg-blue-50/30 transition text-left"
-              >
-                <span className="text-xl">📁</span>
-                <p className="mt-1 text-sm font-medium text-brand-ink truncate">{f.name}</p>
-                <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${VIS_COLORS[f.visibility] || VIS_COLORS.team}`}>
-                  {VIS_LABELS[f.visibility] || f.visibility}
-                </span>
-              </button>
-              {canManage && (
+      {/* 子文件夹网格（搜索模式也显示匹配的文件夹） */}
+      {displayFolders.length > 0 && (
+        <div className="space-y-2">
+          {searchMode && <p className="text-xs font-medium text-slate-500">匹配的文件夹</p>}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {displayFolders.map((f) => (
+              <div key={f.id} className="relative group">
                 <button
-                  onClick={() => doDeleteFolder(f.id, f.name)}
-                  className="absolute top-1 right-1 text-slate-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition"
+                  onClick={() => searchMode
+                    ? jumpToFolderFromSearch(f.id, f.name, (f as FolderSearchItem).folder_path)
+                    : openFolder(f.id, f.name)
+                  }
+                  className="w-full p-3 rounded-xl border border-brand-line bg-white hover:border-blue-300 hover:bg-blue-50/30 transition text-left"
                 >
-                  ✕
+                  <span className="text-xl">📁</span>
+                  <p className="mt-1 text-sm font-medium text-brand-ink truncate">{f.name}</p>
+                  {(f as FolderSearchItem).folder_path && searchMode && (
+                    <p className="text-[10px] text-slate-400 truncate">{(f as FolderSearchItem).folder_path}</p>
+                  )}
+                  <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${VIS_COLORS[f.visibility] || VIS_COLORS.team}`}>
+                    {VIS_LABELS[f.visibility] || f.visibility}
+                  </span>
                 </button>
-              )}
-            </div>
-          ))}
+                {canManage && !searchMode && (
+                  <button
+                    onClick={() => doDeleteFolder(f.id, f.name)}
+                    className="absolute top-1 right-1 text-slate-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* 文件网格 */}
-      {view === 'grid' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-          {files.map((f) => (
-            <div key={f.id} className="relative group">
-              <button
-                onClick={() => openPreview(f)}
-                className="w-full p-3 rounded-xl border border-brand-line bg-white hover:border-blue-300 hover:bg-blue-50/30 transition text-left"
-              >
-                <span className="text-xl">
-                  {f.mime_type?.startsWith('image/') ? '🖼️' :
-                   f.mime_type === 'application/pdf' ? '📄' :
-                   f.mime_type?.startsWith('video/') ? '🎬' :
-                   f.mime_type?.startsWith('audio/') ? '🎵' : '📎'}
-                </span>
-                <p className="mt-1 text-sm font-medium text-brand-ink truncate">{f.name}</p>
-                <p className="text-[10px] text-slate-400">{fmtSize(f.size)} · v{f.version} · {fmt(f.created_at).slice(0, 10)}</p>
-                <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${VIS_COLORS[f.visibility] || VIS_COLORS.team}`}>
-                  {VIS_LABELS[f.visibility] || f.visibility}
-                </span>
-              </button>
-              {canManage && (
-                <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                  <button onClick={() => openEdit(f)} className="text-slate-300 hover:text-blue-500 text-xs" title="编辑">✎</button>
-                  <button onClick={() => doDeleteFile(f.id)} className="text-slate-300 hover:text-red-500 text-xs" title="删除">✕</button>
-                </div>
-              )}
-            </div>
-          ))}
+      {/* 文件网格 / 列表 */}
+      {searchMode || view === 'grid' ? (
+        <div className="space-y-2">
+          {searchMode && <p className="text-xs font-medium text-slate-500">匹配的文件</p>}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {displayFiles.map((f) => (
+              <div key={f.id} className="relative group">
+                <button
+                  onClick={() => openPreview(f)}
+                  className="w-full p-3 rounded-xl border border-brand-line bg-white hover:border-blue-300 hover:bg-blue-50/30 transition text-left"
+                >
+                  <span className="text-xl">
+                    {f.mime_type?.startsWith('image/') ? '🖼️' :
+                     f.mime_type === 'application/pdf' ? '📄' :
+                     f.mime_type?.startsWith('video/') ? '🎬' :
+                     f.mime_type?.startsWith('audio/') ? '🎵' : '📎'}
+                  </span>
+                  <p className="mt-1 text-sm font-medium text-brand-ink truncate">{f.name}</p>
+                  {f.folder_path && searchMode && (
+                    <p className="text-[10px] text-slate-400 truncate">📁 {f.folder_path}</p>
+                  )}
+                  <p className="text-[10px] text-slate-400">{fmtSize(f.size)} · v{f.version} · {fmt(f.created_at).slice(0, 10)}</p>
+                  <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded ${VIS_COLORS[f.visibility] || VIS_COLORS.team}`}>
+                    {VIS_LABELS[f.visibility] || f.visibility}
+                  </span>
+                </button>
+                {canManage && (
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <button onClick={() => openEdit(f)} className="text-slate-300 hover:text-blue-500 text-xs" title="编辑">✎</button>
+                    <button onClick={() => doDeleteFile(f.id)} className="text-slate-300 hover:text-red-500 text-xs" title="删除">✕</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="rounded-xl border border-brand-line overflow-hidden">
@@ -368,12 +552,15 @@ const Files: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {files.map((f) => (
+              {displayFiles.map((f) => (
                 <tr key={f.id} className="border-t border-brand-line hover:bg-slate-50/50">
                   <td className="px-3 py-2">
                     <button onClick={() => openPreview(f)} className="text-blue-600 hover:underline truncate max-w-40 block md:max-w-60">
                       {f.name}
                     </button>
+                    {f.folder_path && searchMode && (
+                      <p className="text-[10px] text-slate-400 truncate">📁 {f.folder_path}</p>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-slate-500 hidden sm:table-cell">{fmtSize(f.size)}</td>
                   <td className="px-3 py-2 text-slate-500 hidden md:table-cell">v{f.version}</td>
@@ -394,12 +581,15 @@ const Files: React.FC = () => {
               ))}
             </tbody>
           </table>
-          {files.length === 0 && <p className="text-center py-6 text-sm text-slate-400">暂无文件</p>}
+          {displayFiles.length === 0 && <p className="text-center py-6 text-sm text-slate-400">{searchMode ? '未找到匹配的文件' : '暂无文件'}</p>}
         </div>
       )}
 
-      {files.length === 0 && currentFolders.length === 0 && view === 'grid' && (
+      {displayFiles.length === 0 && displayFolders.length === 0 && !searchMode && view === 'grid' && (
         <p className="text-center py-8 text-sm text-slate-400">当前目录为空，可以上传文件或新建文件夹</p>
+      )}
+      {searchMode && displayFiles.length === 0 && displayFolders.length === 0 && !searchLoading && (
+        <p className="text-center py-8 text-sm text-slate-400">未找到匹配「{searchQuery}」的结果</p>
       )}
 
       {/* 新建文件夹弹窗 */}
