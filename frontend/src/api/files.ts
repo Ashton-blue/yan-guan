@@ -29,6 +29,11 @@ export interface FileItem {
   uploaded_by_name: string | null
   created_at: string
   updated_at: string
+  folder_path?: string | null
+}
+
+export interface FolderSearchItem extends Folder {
+  folder_path?: string | null
 }
 
 export interface FileListResponse {
@@ -37,6 +42,18 @@ export interface FileListResponse {
   page: number
   page_size: number
 }
+
+export interface SearchResponse {
+  files: FileListResponse
+  folders: {
+    items: FolderSearchItem[]
+    total: number
+  }
+  keyword: string
+}
+
+export type FileTypeFilter = 'all' | 'document' | 'image' | 'video' | 'audio' | 'archive' | 'other'
+export type FileSortBy = 'newest' | 'oldest' | 'name'
 
 export interface FileUpdatePayload {
   name?: string
@@ -84,4 +101,17 @@ export const filesApi = {
 
   deleteFile: (teamId: number, fileId: number) =>
     api.delete<any, { data: { message: string } }>(`/files/${fileId}`, { params: { team_id: teamId } }),
+
+  search: (teamId: number, params: {
+    q?: string
+    file_type?: FileTypeFilter
+    sort_by?: FileSortBy
+    recursive?: boolean
+    folder_id?: number | null
+    page?: number
+    page_size?: number
+  }) =>
+    api.get<any, { data: SearchResponse }>('/files/search', {
+      params: { team_id: teamId, ...params, file_type: params.file_type === 'all' ? undefined : params.file_type },
+    }),
 }

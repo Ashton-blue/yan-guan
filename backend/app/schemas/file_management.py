@@ -54,6 +54,40 @@ class FileUpdate(BaseModel):
     visibility: Optional[str] = Field(None, pattern="^(team|teacher_only|private)$")
 
 
+class FileSearchResult(BaseModel):
+    """搜索结果：包含所属文件夹路径"""
+    id: int
+    team_id: int
+    folder_id: Optional[int]
+    name: str
+    original_name: str
+    mime_type: Optional[str]
+    size: int
+    visibility: str
+    version: int
+    uploaded_by: Optional[int]
+    uploaded_by_name: Optional[str] = None
+    created_at: datetime
+    folder_path: Optional[str] = None  # 形如 "项目文档/文献"
+
+    class Config:
+        from_attributes = True
+
+
+class FolderSearchResult(BaseModel):
+    id: int
+    team_id: int
+    parent_id: Optional[int]
+    name: str
+    visibility: str
+    created_by: Optional[int]
+    created_at: datetime
+    folder_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class FileListParams(BaseModel):
     folder_id: Optional[int] = None
     page: int = Field(1, ge=1)

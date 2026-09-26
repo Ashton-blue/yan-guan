@@ -15,18 +15,22 @@ from app.api.invites import router as invites_router
 from app.api.meetings import router as meetings_router
 from app.api.files import router as files_router
 from app.api.messages import router as messages_router
+from app.api.sse import router as sse_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时初始化数据库
     from app.database import init_db
+    from app.services.sse_manager import sse_manager
     await init_db()
+    await sse_manager.start()
     yield
+    await sse_manager.stop()
 
 app = FastAPI(
     title="研管系统 API",
-    description="研究室管理系统 - P0批次A(账户/会议) + P0批次B(文件/讯息)",
-    version="1.5.0",
+    description="研究室管理系统 - P0批次A(账户/会议) + P0批次B(文件/讯息) + SSE实时推送",
+    version="1.6.0",
     lifespan=lifespan
 )
 
@@ -53,10 +57,12 @@ app.include_router(meetings_router, prefix="/api/v1", tags=["组会管理"])
 # P0 批次 B：文件管理 / 讯息管理
 app.include_router(files_router, prefix="/api/v1")
 app.include_router(messages_router, prefix="/api/v1")
+# P0 批次 C：SSE 实时推送
+app.include_router(sse_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
-    return {"message": "研管系统 API v1.5.0", "status": "running"}
+    return {"message": "研管系统 API v1.6.0", "status": "running"}
 
 @app.get("/health")
 async def health():

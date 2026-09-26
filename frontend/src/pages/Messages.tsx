@@ -5,6 +5,7 @@ import {
   Message, MessageTab,
   messagesApi,
 } from '../api/messages'
+import { useSSE } from '../hooks/useSSE'
 
 const TYPE_LABELS: Record<string, string> = {
   system: '系统',
@@ -74,6 +75,44 @@ const Messages: React.FC = () => {
       else console.error(e)
     }
   }, [teamId, pageSize])
+
+  // ---- SSE 实时推送 ----
+  const sseEnabled = !!teamId && !!me
+
+  // SSE 事件：新消息到达 → 插入列表顶部 + 未读+1
+  const handleSSEMessage = useCallback((data: any) => {
+    if (!data) return
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === data.id)) return prev
+      return [data as Message, ...prev].slice(0, pageSize * 3)
+    })
+    setTotal((t) => t + 1)
+    setUnreadCount((u) => u + 1)
+  }, [pageSize])
+
+  const handleSSEFileUpload = useCallback(() => {
+    if (tab === 'all' || tab === 'notifications') {
+      loadMessages(tab, 1)
+    }
+  }, [tab, loadMessages])
+
+  const handleSSEMeetingCreated = useCallback(() => {
+    if (tab === 'all' || tab === 'notifications') {
+      loadMessages(tab, 1)
+    }
+  }, [tab, loadMessages])
+
+  const { state: sseState } = useSSE({
+    url: sseEnabled
+      ? `${(import.meta.env.VITE_API_URL as string) || '/api/v1'}/messages/stream?team_id=${teamId}&token=${localStorage.getItem('access_token') || ''}`
+      : '',
+    enabled: sseEnabled,
+    onEvent: {
+      message: handleSSEMessage,
+      file_upload: handleSSEFileUpload,
+      meeting_created: handleSSEMeetingCreated,
+    },
+  })
 
   // P4 修复：首次进入团队加载完成后自动拉取「全部」页签
   useEffect(() => {
@@ -203,6 +242,27 @@ const Messages: React.FC = () => {
               {unreadCount} 未读
             </span>
           )}
+          {/* SSE 连接状态 */}
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-1 ${
+              sseState === 'open'
+                ? 'bg-green-50 text-green-700'
+                : sseState === 'connecting'
+                ? 'bg-amber-50 text-amber-700'
+                : 'bg-slate-100 text-slate-500'
+            }`}
+            title={
+              sseState === 'open' ? '实时连接已建立' :
+              sseState === 'connecting' ? '正在连接实时服务…' :
+              '实时服务未连接'
+            }
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              sseState === 'open' ? 'bg-green-500' :
+              sseState === 'connecting' ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'
+            }`}></span>
+            {sseState === 'open' ? '实时' : sseState === 'connecting' ? '连接中' : '离线'}
+          </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
