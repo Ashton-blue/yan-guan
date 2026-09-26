@@ -4,6 +4,7 @@ import {
   Folder, FileItem, FolderSearchItem,
   filesApi, FileTypeFilter, FileSortBy,
 } from '../api/files'
+import { useSSE } from '../hooks/useSSE'
 
 const MANAGER_ROLES = ['owner', 'supervisor', 'co_manager']
 const VIS_LABELS: Record<string, string> = { team: '团队', teacher_only: '仅导师', private: '仅本人' }
@@ -146,6 +147,33 @@ const Files: React.FC = () => {
     doSearch(teamId, searchQuery, searchType, searchSort, searchRecursive, currentFolder)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchType, searchSort, searchRecursive])
+
+  // ---- SSE 实时：收到文件上传事件刷新当前文件夹 ----
+  const [sseFileHint, setSseFileHint] = useState<string>('')
+
+  const handleSSEFileUpload = useCallback((data: any) => {
+    if (!data) return
+    const folderId = data?.folder_id
+    // 如果上传到当前文件夹或整个团队范围（null），且不在搜索模式，刷新
+    if (!searchMode && (folderId == null || folderId === currentFolder)) {
+      loadFolders(teamId, currentFolder)
+      loadFiles(teamId, currentFolder)
+    }
+    // 轻提示
+    const name = data?.name || '新文件'
+    setSseFileHint(`${name} 已上传`)
+    setTimeout(() => setSseFileHint(''), 3000)
+  }, [teamId, currentFolder, searchMode, loadFolders, loadFiles])
+
+  useSSE({
+    url: teamId
+      ? `${(import.meta.env.VITE_API_URL as string) || '/api/v1'}/messages/stream?team_id=${teamId}&token=${localStorage.getItem('access_token') || ''}`
+      : '',
+    enabled: !!teamId,
+    onEvent: {
+      file_upload: handleSSEFileUpload,
+    },
+  })
 
   useEffect(() => {
     const run = async () => {
@@ -300,7 +328,14 @@ const Files: React.FC = () => {
     <div className="p-6">
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-800 text-sm">
         ⚠️ 您没有访问该团队的权限，请联系团队管理员。
-      </div>
+        {/* SSE 文件上传轻提示 */}
+      {sseFileHint && (
+        <div className="fixed bottom-6 right-6 bg-white border border-brand-line rounded-xl shadow-lg px-4 py-3 text-sm text-brand-ink z-50 animate-fade-in flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+          {sseFileHint}
+        </div>
+      )}
+    </div>
     </div>
   )
 
